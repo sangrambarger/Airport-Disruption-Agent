@@ -137,13 +137,21 @@ const classification = await agent(
   `${JSON.stringify(merged)}\n\n` +
   `Cluster candidates that describe the same underlying event across languages/sources (match by airport, ` +
   `approximate date, cause, and affected service - not by title text alone). For each resulting event, assign ` +
-  `workflow_status by comparing against the ledger and against the other candidates in this batch: ` +
-  `new_event = not in the ledger at all. meaningful_update = already in the ledger but this adds material new ` +
-  `evidence (status change, escalation/recovery, cargo impact confirmed, etc). duplicate = repeats a ledger ` +
-  `entry with nothing new. monitor = credible but too incomplete to report yet. noise = irrelevant, ` +
-  `passenger-only, or resolved with no operational/cargo impact. Set is_new_ledger_entry to true only for ` +
-  `events that should be appended to the ledger (new_event and meaningful_update). Return the classified events ` +
-  `and a cycle summary.`,
+  `workflow_status by comparing against the ledger and against the other candidates in this batch. ` +
+  `Cargo/logistics relevance is one path to reportability, not the only one - do not default an event to ` +
+  `noise just because it lacks a cargo angle or isn't yet officially confirmed. new_event = not in the ledger ` +
+  `at all, and it clears the bar on any of: confirmed cargo/logistics impact; real operational/flight-count ` +
+  `impact at meaningful scale (dozens of flights cancelled/diverted/grounded, not a single flight); or a ` +
+  `materialized instance of a recurring pattern at that airport worth tracking going forward. ` +
+  `meaningful_update = already in the ledger but this adds material new evidence (status change, ` +
+  `escalation/recovery, cargo impact confirmed, scale materially increased). duplicate = repeats a ledger ` +
+  `entry with nothing new. monitor = not yet at reportable scale but worth tracking - an unresolved dispute ` +
+  `or strike threat with no confirmed date, an early instance of a pattern that may be forming (e.g. one ` +
+  `weather ground-stop at an airport that could see more), or a report pending official confirmation. ` +
+  `noise = genuinely trivial - a single flight affected with no pattern or escalation risk, an incident ` +
+  `resolved with no lasting operational effect, or a hoax/false alarm with no measurable disruption. ` +
+  `Set is_new_ledger_entry to true only for events that should be appended to the ledger (new_event and ` +
+  `meaningful_update). Return the classified events and a cycle summary.`,
   { label: 'classify-and-dedupe', phase: 'Classify', schema: CLASSIFY_SCHEMA }
 )
 

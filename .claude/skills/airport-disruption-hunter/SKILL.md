@@ -104,17 +104,29 @@ runway ops, IT/cyber) propagates to operational and cargo impact.
 
 ## Classification statuses
 
-Assign exactly one workflow status per clustered event:
+Assign exactly one workflow status per clustered event. **Cargo/logistics relevance is one lens,
+not the only one that makes an event reportable.** An event also clears the bar on real
+operational/flight-count impact, on a recurring pattern at the same airport, or (at `monitor`
+level) on credible-but-unconfirmed risk — don't discard something as noise just because it's
+passenger-only or not yet officially confirmed:
 
-- `new_event` — disruption not previously captured
+- `new_event` — a disruption not previously captured that clears the bar on any of: confirmed
+  cargo/logistics impact; real operational/flight-count impact at meaningful scale (dozens of
+  flights cancelled/diverted/grounded, not a single flight); or a materialized instance of a
+  recurring pattern at an airport worth tracking going forward.
 - `meaningful_update` — existing event, but new evidence changes the risk picture (status change,
-  duration change, cargo impact confirmed, escalation/de-escalation)
+  duration change, cargo impact confirmed, escalation/de-escalation, scale materially increased)
 - `duplicate` — repeats a known event with no material new information
-- `monitor` — credible but too incomplete to push yet
-- `noise` — irrelevant, passenger-only, or resolved with no operational/cargo impact
+- `monitor` — not yet at reportable scale, but worth tracking: an unresolved dispute or strike
+  threat with no confirmed date, an early instance of a pattern that may be forming (e.g. a
+  second weather ground-stop at the same airport in as many days), or a report pending official
+  confirmation
+- `noise` — genuinely trivial: a single flight affected with no pattern or escalation risk, an
+  incident resolved with no lasting operational effect, or a hoax/false alarm with no measurable
+  disruption
 
 Only `new_event` and `meaningful_update` are normally worth surfacing prominently; `monitor` is
-held pending more evidence; `duplicate` and `noise` are not surfaced as new items.
+held pending more evidence or escalation; `duplicate` and `noise` are not surfaced as new items.
 
 ## Scheduled operation
 

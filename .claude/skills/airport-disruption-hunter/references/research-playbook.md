@@ -7,6 +7,13 @@ Part of a larger EventWatch research playbook set. It cross-references `../resea
 material rather than resolvable links. This file only covers *how* to research an airport
 disruption, not whether it clears any particular reportability bar.
 
+Note: the source material's threshold rulebook treats "passenger-only with no cargo impact" as a
+hard discard. This skill's own classification (`../SKILL.md`, `dedup-clustering.md`,
+`reference-examples.md`) is broader than that — real operational/flight-count scale, credible
+unconfirmed risk, and recurring patterns at one airport are all reportable here even without a
+cargo angle. Where the two disagree, this skill's classification rules are the ones actually in
+effect.
+
 ## Research objective
 
 Determine whether airport operations, cargo movement, flight schedules, terminal operations,
