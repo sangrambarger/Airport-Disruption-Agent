@@ -150,8 +150,10 @@ const classification = await agent(
   `weather ground-stop at an airport that could see more), or a report pending official confirmation. ` +
   `noise = genuinely trivial - a single flight affected with no pattern or escalation risk, an incident ` +
   `resolved with no lasting operational effect, or a hoax/false alarm with no measurable disruption. ` +
-  `Set is_new_ledger_entry to true only for events that should be appended to the ledger (new_event and ` +
-  `meaningful_update). Return the classified events and a cycle summary.`,
+  `Set is_new_ledger_entry to true for new_event, meaningful_update, AND monitor events not already in the ` +
+  `ledger (monitor items need persistent memory too, so a still-unresolved dispute doesn't get rediscovered ` +
+  `as "new" every cycle - the next cycle should recognize it and escalate to meaningful_update once it ` +
+  `materializes). Leave it false for duplicate and noise. Return the classified events and a cycle summary.`,
   { label: 'classify-and-dedupe', phase: 'Classify', schema: CLASSIFY_SCHEMA }
 )
 
