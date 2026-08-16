@@ -116,6 +116,30 @@ Assign exactly one workflow status per clustered event:
 Only `new_event` and `meaningful_update` are normally worth surfacing prominently; `monitor` is
 held pending more evidence; `duplicate` and `noise` are not surfaced as new items.
 
+## Scheduled operation
+
+For ad hoc hunts (a user asks about a specific airport or region right now), follow the workflow
+above directly with WebSearch/WebFetch/Agent.
+
+For **standing, recurring monitoring** ("keep watching", "check every hour"), this repo also
+ships a runnable Workflow instead of hand-built agent calls each time:
+
+- `.claude/workflows/airport-disruption-hourly-sweep.js` — a global multilingual sweep. It fans
+  out one agent per source bucket from `references/subagent-roles.md` (airport authority, civil
+  aviation/regulator, labour/union, cargo/logistics, airline operations, local-language news,
+  weather/emergency), each doing real WebSearch/WebFetch discovery, then a single
+  dedupe-and-classify agent that reads the running ledger and the current batch together and
+  returns `classified_events` + a `cycle_summary`. Invoke it with
+  `Workflow({ name: "airport-disruption-hourly-sweep" })`.
+- `data/signal-ledger.jsonl` (repo root) — the running ledger, one JSON object per line, matching
+  `assets/signal-ledger-schema.json`. After each sweep, append the returned events flagged
+  `is_new_ledger_entry: true` so the next cycle can tell new events from repeats.
+- Recurring execution is driven by a scheduled Routine (cron trigger) that fires into a session
+  with a prompt to run the workflow, append qualifying events to the ledger, commit/push, and
+  summarize — the workflow script itself has no scheduling or filesystem access of its own, so
+  the ledger update and commit happen as a normal tool-using step after the workflow returns, not
+  inside the script.
+
 ## Non-negotiables
 
 - Don't stop after 3-4 sources, and don't rely only on English or international media.
