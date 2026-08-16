@@ -131,9 +131,13 @@ ships a runnable Workflow instead of hand-built agent calls each time:
   dedupe-and-classify agent that reads the running ledger and the current batch together and
   returns `classified_events` + a `cycle_summary`. Invoke it with
   `Workflow({ name: "airport-disruption-hourly-sweep" })`.
-- `data/signal-ledger.jsonl` (repo root) — the running ledger, one JSON object per line, matching
-  `assets/signal-ledger-schema.json`. After each sweep, append the returned events flagged
-  `is_new_ledger_entry: true` so the next cycle can tell new events from repeats.
+- `data/signal-ledger.jsonl` (repo root) — the running ledger, one JSON object per line. After
+  each sweep, append the returned `classified_events` flagged `is_new_ledger_entry: true` so the
+  next cycle can tell new events from repeats. In practice each line is shaped like
+  `classified_event_output` (`assets/output-schemas.json`), keyed by `canonical_event_id`, rather
+  than the raw per-signal shape in `assets/signal-ledger-schema.json` — the classify stage needs
+  event-level memory (what happened, what status it's at) to dedupe against, not a log of every
+  raw mention.
 - Recurring execution is driven by a scheduled Routine (cron trigger) that fires into a session
   with a prompt to run the workflow, append qualifying events to the ledger, commit/push, and
   summarize — the workflow script itself has no scheduling or filesystem access of its own, so
