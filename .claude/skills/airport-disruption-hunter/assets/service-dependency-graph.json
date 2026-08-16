@@ -1,0 +1,79 @@
+{
+  "airport_services": {
+    "ground_handling": {
+      "can_affect": [
+        "aircraft_turnaround",
+        "cargo_loading",
+        "cargo_unloading",
+        "flight_departures",
+        "flight_arrivals"
+      ],
+      "decision_relevance": "High when disruption is airport-wide, cargo-linked, or causes cancellations/delays."
+    },
+    "refuelling": {
+      "can_affect": [
+        "flight_departures",
+        "cargo_flights",
+        "airline_schedule",
+        "aircraft_positioning"
+      ],
+      "decision_relevance": "High when strike or fuel disruption threatens airport operations or airline capacity."
+    },
+    "cargo_handling": {
+      "can_affect": [
+        "cargo_acceptance",
+        "freight_movement",
+        "customs_clearance",
+        "cargo_backlog"
+      ],
+      "decision_relevance": "Very high because direct cargo disruption is strongly relevant."
+    },
+    "customs": {
+      "can_affect": [
+        "international_cargo_clearance",
+        "import_export_flow",
+        "perishable_or_pharma_shipments"
+      ],
+      "decision_relevance": "High when cargo or international shipment clearance is delayed or suspended."
+    },
+    "airport_security": {
+      "can_affect": [
+        "terminal_throughput",
+        "airport_access",
+        "cargo_screening",
+        "flight_operations"
+      ],
+      "decision_relevance": "Depends on whether it affects airport-wide security, cargo screening, or operational throughput."
+    },
+    "atc_radar_navigation": {
+      "can_affect": [
+        "departures",
+        "arrivals",
+        "diversions",
+        "airport_capacity",
+        "cargo_flights"
+      ],
+      "decision_relevance": "Very high when operations are suspended or capacity is materially reduced."
+    },
+    "runway_operations": {
+      "can_affect": [
+        "airport_capacity",
+        "departures",
+        "arrivals",
+        "diversions",
+        "cargo_flights"
+      ],
+      "decision_relevance": "High when closure/restriction causes meaningful operational impact."
+    },
+    "airport_it_cyber_systems": {
+      "can_affect": [
+        "check_in",
+        "dispatch",
+        "cargo_processing",
+        "security_systems",
+        "airport_operations"
+      ],
+      "decision_relevance": "High when airport-wide operations, cargo processing, or airline dispatch are affected."
+    }
+  }
+}

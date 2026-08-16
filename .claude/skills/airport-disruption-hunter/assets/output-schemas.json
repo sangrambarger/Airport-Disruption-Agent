@@ -1,0 +1,60 @@
+{
+  "candidate_signal_output": {
+    "raw_title": "",
+    "translated_title": "",
+    "source_name": "",
+    "source_url": "",
+    "source_language": "",
+    "published_time": "",
+    "first_seen_time": "",
+    "airport_name_raw": "",
+    "airport_name_normalised": "",
+    "country": "",
+    "signal_type": "",
+    "evidence_summary": "",
+    "operational_impact_evidence": "",
+    "cargo_relevance_evidence": "",
+    "event_status": "planned/ongoing/resolved/unclear",
+    "candidate_confidence": "high/medium/low"
+  },
+  "classified_event_output": {
+    "canonical_event_id": "",
+    "event_title": "",
+    "airport_name": "",
+    "country": "",
+    "signal_type": "",
+    "cause": "",
+    "affected_service": "",
+    "event_status": "planned/ongoing/resolved/unclear",
+    "operational_impact": "",
+    "cargo_or_logistics_relevance": "",
+    "sources": [],
+    "workflow_status": "new_event/meaningful_update/duplicate/monitor/noise",
+    "analyst_push_recommendation": "push/hold/do_not_push",
+    "confidence": "high/medium/low",
+    "already_sent_check": {
+      "already_sent": "yes/no/unclear",
+      "matched_event_id": "",
+      "is_meaningful_update": "yes/no/unclear",
+      "update_reason": ""
+    },
+    "reason": "",
+    "recommended_next_searches": []
+  },
+  "search_cycle_summary": {
+    "search_cycle_id": "",
+    "cycle_time": "",
+    "subagents_run": [],
+    "languages_used": [],
+    "candidate_signals_found": 0,
+    "new_events": 0,
+    "meaningful_updates": 0,
+    "duplicates": 0,
+    "monitor_items": 0,
+    "noise_items": 0,
+    "successful_queries": [],
+    "noisy_queries": [],
+    "new_sources_discovered": [],
+    "recommended_query_updates": []
+  }
+}
