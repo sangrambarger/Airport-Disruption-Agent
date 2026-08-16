@@ -1,0 +1,47 @@
+{
+  "signal_id": "string",
+  "canonical_event_id": "string_or_null",
+  "raw_title": "string",
+  "translated_title": "string",
+  "source_language": "string",
+  "source_name": "string",
+  "source_url": "string",
+  "published_time": "string_or_unclear",
+  "first_seen_time": "string",
+  "airport_name_raw": "string",
+  "airport_name_normalised": "string_or_unclear",
+  "iata_code": "string_or_unclear",
+  "icao_code": "string_or_unclear",
+  "city": "string_or_unclear",
+  "country": "string_or_unclear",
+  "signal_type": "airport_closure|runway_issue|strike|cargo_disruption|ground_handling|refuelling|security|customs|atc_radar|cyber_it|weather|fire_accident|flight_cancellation|reopening_recovery|other",
+  "cause": "string_or_unclear",
+  "affected_service": "string_or_unclear",
+  "operational_impact": "string",
+  "cargo_relevance": "string_or_unclear",
+  "event_status": "planned|ongoing|resolved|unclear",
+  "candidate_confidence": "high|medium|low",
+  "source_credibility": "official|industry|reputable_media|local_media|social_public_alert|unclear",
+  "deduplication": {
+    "possible_duplicate": "yes|no|unclear",
+    "matched_event_id": "string_or_null",
+    "dedupe_reason": "string"
+  },
+  "already_sent_check": {
+    "already_sent_to_analyst": "yes|no|unclear",
+    "sent_reference_id": "string_or_null",
+    "is_meaningful_update": "yes|no|unclear",
+    "update_reason": "string"
+  },
+  "classification": {
+    "workflow_status": "new_event|meaningful_update|duplicate|monitor|noise|unclassified",
+    "analyst_push_recommendation": "push|hold|do_not_push",
+    "reason": "string"
+  },
+  "query_metadata": {
+    "query_used": "string",
+    "query_language": "string",
+    "subagent_name": "string",
+    "search_cycle_id": "string"
+  }
+}
