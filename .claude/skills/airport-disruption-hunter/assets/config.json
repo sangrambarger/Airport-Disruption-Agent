@@ -1,0 +1,48 @@
+{
+  "config_schema_version": 1,
+  "_comment": "Edit this file to point the skill at a different scope, cadence, or delivery target. Nothing in the skill or workflow files should need to change for a new deployment - if it does, that's a bug in the skill, not a config gap.",
+
+  "scope": {
+    "mode": "global",
+    "_mode_options": ["global", "regions"],
+    "include_regions": [],
+    "exclude_regions": [],
+    "_note": "When mode is 'regions', include_regions holds country names, region names, or IATA/ICAO codes and discovery is restricted to them. Empty include_regions with mode 'global' means no restriction. exclude_regions applies in either mode."
+  },
+
+  "cadence": {
+    "flash_pass_minutes": 15,
+    "deep_pass_hours": 5,
+    "_note": "Targets for the two-cadence architecture (build-plan Batch 1). The single combined workflow that exists today runs on whatever cadence its Routine trigger is set to; these values are the intended settings once the flash/deep split lands."
+  },
+
+  "cargo_hub_tiers_ref": "assets/cargo-hub-tiers.json",
+
+  "delivery": {
+    "dashboard": {
+      "enabled": true,
+      "auto_refresh": true,
+      "_note": "auto_refresh means the dashboard is regenerated and republished as the last step of every successful cycle, once that step exists (build-plan Batch 4). There is no in-page 'run now' control - a published Artifact cannot trigger a skill run; see the operating plan, section 9."
+    },
+    "email": {
+      "enabled": false,
+      "provider": "gmail",
+      "to": ["sangrambarger@gmail.com"],
+      "digest_style": "supply_chain_visual_digest",
+      "_note": "Disabled until a Gmail/Outlook connector is authorized on this org and the digest formatter (build-plan Batch 5) exists. digest_style is a hint to the digest-rendering step to include a supply-chain-relevant visual, not a raw text dump."
+    }
+  },
+
+  "feature_flags": {
+    "flight_tracking_api": false,
+    "flight_tracking_provider": null,
+    "verification_pass": false,
+    "_note": "flight_tracking_api requires an actual provider account and API key (build-plan Batch 3) before it can be turned on. verification_pass gates the thin-sourced/high-impact re-check step (build-plan Batch 2)."
+  },
+
+  "budgets": {
+    "max_agents_per_cycle": 8,
+    "max_tokens_per_cycle_hint": 800000,
+    "_note": "max_tokens_per_cycle_hint is informational context for whoever is sizing cadence/scope, not an enforced runtime cap - the workflow script has no way to abort mid-run on token spend today."
+  }
+}

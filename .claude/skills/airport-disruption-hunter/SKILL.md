@@ -88,6 +88,24 @@ Load only what the current step needs:
 | `references/dedup-clustering.md` | merging findings — event-fingerprint matching and meaningful-update vs. duplicate calls |
 | `references/reference-examples.md` | calibrating whether a signal is strong or weak |
 | `references/research-playbook.md` | deeper EventWatch-style research/escalation guidance — note: this file cross-references `research-playbooks.md` and `governance/threshold-rulebook.md` from a broader EventWatch repo that isn't part of this pack, so some pointers in it won't resolve here |
+| `references/event-fingerprinting.md` | assigning a stable `canonical_event_id`, or stamping `first_detected_at`/`last_updated_at` when appending to the ledger |
+
+## Configuration
+
+This skill is scope-agnostic by design — a new deployment should only ever need to edit
+`assets/config.json`, never the skill or workflow logic itself:
+
+- `assets/config.json` — region scope (global or a specific list), cadence targets, delivery
+  destination(s), feature flags (flight-tracking API, verification pass), and a pointer to
+  `assets/cargo-hub-tiers.json`.
+- `assets/cargo-hub-tiers.json` — airport criticality tiers (by cargo throughput/role, not
+  passenger volume) used to weight impact. Not exhaustive; extend freely — an airport missing
+  from it is treated as the lowest tier by default.
+
+If `config.json`'s `scope.mode` is `"regions"`, pass its `scope` object as
+`Workflow({ name: "airport-disruption-hourly-sweep", args: { regionScope: config.scope } })` —
+the workflow script reads `args.regionScope` and restricts every discovery bucket's prompt to it.
+Leaving `scope.mode` as `"global"` (the default) or omitting `args` entirely searches unrestricted.
 
 ## Output contract
 
@@ -101,6 +119,16 @@ When maintaining a running ledger across multiple hunts/cycles, persist entries 
 `assets/signal-ledger-schema.json`. Use `assets/service-dependency-graph.json` to judge how a
 disrupted airport service (ground handling, refuelling, cargo handling, customs, ATC/radar,
 runway ops, IT/cyber) propagates to operational and cargo impact.
+
+`classified_event_output` (schema v2) carries a typed `impact` block — `flights_cancelled`,
+`flights_delayed`, `passengers_affected`, `duration_days`, `cargo_confirmed`,
+`cargo_relevance_level` — alongside the narrative `operational_impact` and
+`cargo_or_logistics_relevance` fields. Populate `impact` from real evidence only, leaving a field
+`null` rather than guessing; set `extraction_method: "agent_reported"` (a migration backfilling
+older entries from text is the only place `"heuristic_backfill"` belongs). `cargo_relevance_level`
+is what drives the cargo-first triage sort downstream — get it right: `"direct"` only for
+explicit freighter/belly-cargo/cargo-terminal/cargo-workforce involvement, `"possible"` for
+plausible-but-unconfirmed exposure, `"none"` otherwise.
 
 ## Classification statuses
 
@@ -139,25 +167,37 @@ ships a runnable Workflow instead of hand-built agent calls each time:
 - `.claude/workflows/airport-disruption-hourly-sweep.js` — a global multilingual sweep. It fans
   out one agent per source bucket from `references/subagent-roles.md` (airport authority, civil
   aviation/regulator, labour/union, cargo/logistics, airline operations, local-language news,
-  weather/emergency), each doing real WebSearch/WebFetch discovery, then a single
-  dedupe-and-classify agent that reads the running ledger and the current batch together and
-  returns `classified_events` + a `cycle_summary`. Invoke it with
-  `Workflow({ name: "airport-disruption-hourly-sweep" })`.
-- `data/signal-ledger.jsonl` (repo root) — the running ledger, one JSON object per line. After
-  each sweep, append the returned `classified_events` flagged `is_new_ledger_entry: true` so the
-  next cycle can tell new events from repeats. This flag is set for `new_event`,
-  `meaningful_update`, **and `monitor`** — a monitor item needs persistent memory too, so an
-  unresolved dispute doesn't get rediscovered as "new" every cycle and can cleanly escalate to
-  `meaningful_update` once it materializes; only `duplicate` and `noise` are left out of the
-  ledger entirely. In practice each line is shaped like `classified_event_output`
-  (`assets/output-schemas.json`), keyed by `canonical_event_id`, rather than the raw per-signal
-  shape in `assets/signal-ledger-schema.json` — the classify stage needs event-level memory (what
-  happened, what status it's at) to dedupe against, not a log of every raw mention.
+  weather/emergency), each doing real WebSearch/WebFetch discovery and a best-effort
+  `impact_estimate` per candidate, then a single dedupe-and-classify agent that reads the running
+  ledger and the current batch together and returns `classified_events` (each with a reconciled
+  `impact` block), `candidate_dispositions` (one dedup verdict per raw candidate, keyed by
+  `source_url`), and a `cycle_summary`. Invoke it with
+  `Workflow({ name: "airport-disruption-hourly-sweep", args: { regionScope: <config.scope> } })` —
+  omit `args` for unrestricted global scope. The script itself merges `candidate_dispositions`
+  onto the raw candidates and returns them as `raw_candidates`.
+- `data/signal-ledger.jsonl` (repo root) — the running ledger, one JSON object per line, shaped
+  like `classified_event_output` and keyed by `canonical_event_id` (see
+  `references/event-fingerprinting.md` for the ID convention). After each sweep, append the
+  returned `classified_events` flagged `is_new_ledger_entry: true` so the next cycle can tell new
+  events from repeats. This flag is set for `new_event`, `meaningful_update`, **and `monitor`** —
+  a monitor item needs persistent memory too, so an unresolved dispute doesn't get rediscovered as
+  "new" every cycle and can cleanly escalate to `meaningful_update` once it materializes; only
+  `duplicate` and `noise` are left out of the ledger entirely. **When appending, stamp real
+  timestamps** — read the current time with `date -u +"%Y-%m-%dT%H:%M:%SZ"` (never invent one):
+  `last_updated_at` is always that current time; `first_detected_at` is copied forward from the
+  most recent existing ledger line with the same `canonical_event_id`, or set to the current time
+  if there is none.
+- `data/raw-candidates.jsonl` (repo root) — the pre-dedup audit trail. Append every item in the
+  workflow's returned `raw_candidates` array, one JSON object per line, tagging each with the
+  cycle identifier — this is what lets the ledger/audit dashboard view show *why* a given title
+  was or wasn't treated as a duplicate.
 - Recurring execution is driven by a scheduled Routine (cron trigger) that fires into a session
-  with a prompt to run the workflow, append qualifying events to the ledger, commit/push, and
-  summarize — the workflow script itself has no scheduling or filesystem access of its own, so
-  the ledger update and commit happen as a normal tool-using step after the workflow returns, not
-  inside the script.
+  with a prompt to run the workflow, append qualifying events to both ledger files with real
+  timestamps, commit/push, and summarize — the workflow script itself has no scheduling, clock, or
+  filesystem access of its own, so all of that happens as normal tool-using steps after the
+  workflow returns, not inside the script. Once a dashboard-regeneration step exists (build-plan
+  Batch 4), the same Routine prompt is where it gets added, as a further step after the ledger
+  append — the dashboard is never a separate schedule of its own.
 
 ## Non-negotiables
 
@@ -167,3 +207,5 @@ ships a runnable Workflow instead of hand-built agent calls each time:
 - Don't suppress a weak-but-credible signal during discovery — capture it, classify later.
 - Don't surface duplicates, and don't confuse a duplicate report with a meaningful update.
 - Don't build this as a rigid keyword rule engine — reason from operational consequences.
+- Don't invent a timestamp or an `impact` number to fill a field — leave it unset/`null` and let
+  the confidence/evidence fields carry the uncertainty instead.

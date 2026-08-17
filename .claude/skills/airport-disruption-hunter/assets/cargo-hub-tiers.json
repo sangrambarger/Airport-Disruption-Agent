@@ -1,0 +1,25 @@
+{
+  "_comment": "Airport criticality tiers for cargo/supply-chain risk weighting. Keyed by IATA code. Not exhaustive - extend freely; an airport missing from this file is treated as tier_3 by default. Tier assignment is by cargo throughput/role, not passenger volume - a huge passenger hub with little freight role (e.g. a leisure-only airport) is correctly tier_3 here even if it's a major airport otherwise.",
+
+  "tier_1": {
+    "_note": "Major global freight hubs - a disruption here has outsized supply-chain reach regardless of how it reads in passenger-traffic terms.",
+    "airports": [
+      "HKG", "MEM", "PVG", "ICN", "ANC", "DXB", "LEJ", "CDG", "FRA", "LAX",
+      "ORD", "MIA", "NRT", "TPE", "SIN", "LGG", "CGN", "AMS", "JFK", "IND",
+      "SDF", "CVG", "CAN", "PEK", "PKX", "ADD"
+    ]
+  },
+
+  "tier_2": {
+    "_note": "Significant regional or national cargo gateways - real supply-chain weight, typically concentrated in one region or trade lane.",
+    "airports": [
+      "BOM", "DEL", "JNB", "GRU", "BOG", "NBO", "CAI", "IST", "DOH", "BAH",
+      "KUL", "BKK", "MNL", "LOS", "ACC", "MAD", "MXP", "BRU", "LHR", "MUC",
+      "VIE", "ARN", "CPH", "WAW", "BCN", "PMI", "AGP"
+    ]
+  },
+
+  "tier_3": {
+    "_note": "Default tier for any airport not listed above - not a curated list, just the fallback."
+  }
+}

@@ -34,6 +34,17 @@ const DISCOVER_SCHEMA = {
           cargo_relevance_evidence: { type: 'string' },
           event_status: { type: 'string', enum: ['planned', 'ongoing', 'resolved', 'unclear'] },
           candidate_confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+          impact_estimate: {
+            type: 'object',
+            properties: {
+              flights_cancelled: { type: ['number', 'null'] },
+              flights_delayed: { type: ['number', 'null'] },
+              passengers_affected: { type: ['number', 'null'] },
+              duration_days: { type: ['number', 'null'] },
+              cargo_confirmed: { type: 'boolean' },
+              cargo_relevance_level: { type: 'string', enum: ['direct', 'possible', 'none'] },
+            },
+          },
         },
         required: ['raw_title', 'source_name', 'source_url', 'airport_name_raw', 'signal_type', 'evidence_summary', 'event_status', 'candidate_confidence'],
       },
@@ -62,6 +73,19 @@ const CLASSIFY_SCHEMA = {
           event_status: { type: 'string' },
           operational_impact: { type: 'string' },
           cargo_or_logistics_relevance: { type: 'string' },
+          impact: {
+            type: 'object',
+            properties: {
+              flights_cancelled: { type: ['number', 'null'] },
+              flights_delayed: { type: ['number', 'null'] },
+              passengers_affected: { type: ['number', 'null'] },
+              duration_days: { type: ['number', 'null'] },
+              cargo_confirmed: { type: 'boolean' },
+              cargo_relevance_level: { type: 'string', enum: ['direct', 'possible', 'none'] },
+              extraction_method: { type: 'string', enum: ['agent_reported', 'heuristic_backfill'] },
+            },
+            required: ['cargo_confirmed', 'cargo_relevance_level', 'extraction_method'],
+          },
           sources: {
             type: 'array',
             items: {
@@ -79,7 +103,21 @@ const CLASSIFY_SCHEMA = {
           reason: { type: 'string' },
           is_new_ledger_entry: { type: 'boolean' },
         },
-        required: ['event_title', 'airport_name', 'country', 'signal_type', 'workflow_status', 'confidence', 'reason'],
+        required: ['event_title', 'airport_name', 'country', 'signal_type', 'workflow_status', 'confidence', 'reason', 'impact'],
+      },
+    },
+    candidate_dispositions: {
+      type: 'array',
+      description: 'One entry per raw candidate signal passed into this stage, keyed by source_url, regardless of its verdict - this is the audit trail for data/raw-candidates.jsonl.',
+      items: {
+        type: 'object',
+        properties: {
+          source_url: { type: 'string' },
+          verdict: { type: 'string', enum: ['new_cluster', 'matched_existing_event', 'duplicate_within_batch', 'noise'] },
+          matched_canonical_event_id: { type: ['string', 'null'] },
+          dedupe_reason: { type: 'string' },
+        },
+        required: ['source_url', 'verdict', 'dedupe_reason'],
       },
     },
     cycle_summary: {
@@ -95,7 +133,7 @@ const CLASSIFY_SCHEMA = {
       },
     },
   },
-  required: ['classified_events', 'cycle_summary'],
+  required: ['classified_events', 'candidate_dispositions', 'cycle_summary'],
 }
 
 const BUCKETS = [
@@ -108,19 +146,29 @@ const BUCKETS = [
   { key: 'weather_emergency', focus: 'meteorological authorities, and police/fire/emergency/security sources for airport-affecting incidents' },
 ]
 
+const regionScope = (args && args.regionScope && args.regionScope.mode === 'regions' && args.regionScope.include_regions && args.regionScope.include_regions.length)
+  ? `Restrict this hunt to the following regions/countries/airport codes only - do not report signals outside them: ${args.regionScope.include_regions.join(', ')}. `
+  : ''
+const excludeScope = (args && args.regionScope && args.regionScope.exclude_regions && args.regionScope.exclude_regions.length)
+  ? `Exclude the following regions/countries/airport codes even if otherwise in scope: ${args.regionScope.exclude_regions.join(', ')}. `
+  : ''
+
 phase('Discover')
 const discoveries = await parallel(BUCKETS.map(b => () => agent(
   `You are the ${b.key} discovery role for a recall-first global airport-disruption signal hunter. ` +
   `Read ${SKILL_DIR}/references/source-strategy.md, ${SKILL_DIR}/references/query-development.md, and ` +
   `${SKILL_DIR}/references/multilingual-map.md for the search tactics and query patterns for your bucket. ` +
-  `Your bucket focus: ${b.focus}. ` +
+  `Your bucket focus: ${b.focus}. ${regionScope}${excludeScope}` +
   `Use WebSearch (and WebFetch to verify specific pages) to hunt globally, in English and relevant local ` +
   `languages, for credible signals of airport operational disruption from roughly the last 24-48 hours: ` +
   `closures, runway/ATC/radar/cyber issues, strikes or labour action, cargo terminal or customs disruption, ` +
   `security incidents, weather impact, or reopening/recovery updates. Do not stop after 2-3 sources - search ` +
   `exhaustively across this bucket. Capture weak-but-credible signals; do not filter for relevance yourself, ` +
   `that happens in a later step. Return every candidate signal you find with full source attribution - a ` +
-  `working source_url is required for each candidate.`,
+  `working source_url is required for each candidate. For each candidate, also fill impact_estimate from ` +
+  `whatever the evidence actually states - flight/passenger counts, duration - leaving any field null rather ` +
+  `than guessing a number, and set cargo_relevance_level to "direct" only if cargo/freighter/cargo-terminal ` +
+  `involvement is explicitly named, "possible" if plausible but unconfirmed, else "none".`,
   { label: `discover:${b.key}`, phase: 'Discover', schema: DISCOVER_SCHEMA }
 )))
 
@@ -153,12 +201,39 @@ const classification = await agent(
   `Set is_new_ledger_entry to true for new_event, meaningful_update, AND monitor events not already in the ` +
   `ledger (monitor items need persistent memory too, so a still-unresolved dispute doesn't get rediscovered ` +
   `as "new" every cycle - the next cycle should recognize it and escalate to meaningful_update once it ` +
-  `materializes). Leave it false for duplicate and noise. Return the classified events and a cycle summary.`,
+  `materializes). Leave it false for duplicate and noise. ` +
+  `For every classified event, also set impact: reconcile the impact_estimate fields the candidates in its ` +
+  `cluster reported (prefer the largest well-sourced figure over a smaller stale one, not a sum of possibly- ` +
+  `overlapping counts), leaving a field null if no candidate had evidence for it; set cargo_confirmed true ` +
+  `only when cargo_relevance_level is "direct"; set extraction_method to "agent_reported". ` +
+  `Separately, return candidate_dispositions: exactly one entry per raw candidate signal in the input above ` +
+  `(match by its source_url, every candidate must appear exactly once), recording verdict ` +
+  `("new_cluster" if it seeded a new_event/monitor cluster not previously in the ledger, ` +
+  `"matched_existing_event" if it matched a ledger entry or contributed to a meaningful_update, ` +
+  `"duplicate_within_batch" if it repeats another candidate in this same batch, "noise" if discarded as ` +
+  `trivial), matched_canonical_event_id (null if none), and a one-sentence dedupe_reason explaining the call - ` +
+  `this is the audit trail for verifying duplicate detection later, so be specific (e.g. "same strike as ` +
+  `BCN-2026-08-groundforce-strike - matched airport + cause + overlapping date range", not "duplicate"). ` +
+  `Return the classified events, candidate_dispositions, and a cycle summary.`,
   { label: 'classify-and-dedupe', phase: 'Classify', schema: CLASSIFY_SCHEMA }
 )
 
+const dispositionByUrl = new Map(
+  ((classification && classification.candidate_dispositions) || []).map(d => [d.source_url, d])
+)
+const rawCandidates = merged.map(c => {
+  const disposition = dispositionByUrl.get(c.source_url)
+  return {
+    ...c,
+    dedup_verdict: disposition ? disposition.verdict : 'unclassified',
+    matched_canonical_event_id: disposition ? disposition.matched_canonical_event_id : null,
+    dedupe_reason: disposition ? disposition.dedupe_reason : 'classify stage did not return a disposition for this source_url',
+  }
+})
+
 return {
   raw_candidate_count: merged.length,
+  raw_candidates: rawCandidates,
   classified_events: (classification && classification.classified_events) || [],
   cycle_summary: (classification && classification.cycle_summary) || {},
 }
