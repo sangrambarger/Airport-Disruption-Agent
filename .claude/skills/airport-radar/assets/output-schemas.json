@@ -30,7 +30,7 @@
     "dedupe_reason": ""
   },
   "classified_event_output": {
-    "ledger_schema_version": 2,
+    "ledger_schema_version": 3,
     "canonical_event_id": "",
     "event_title": "",
     "airport_name": "",
@@ -65,7 +65,11 @@
     "recommended_next_searches": [],
     "first_detected_at": "",
     "last_updated_at": "",
-    "_timestamp_comment": "Stamped by the ledger-append step with a real clock read (e.g. `date -u`), never invented by the workflow script or the classify subagent. See references/event-fingerprinting.md."
+    "_timestamp_comment": "Stamped by the ledger-append step with a real clock read (e.g. `date -u`), never invented by the workflow script or the classify subagent. See references/event-fingerprinting.md.",
+    "council_verdict": "confirmed/downgraded_to_monitor/downgraded_to_noise/escalated_to_new_event/not_reviewed",
+    "severity_delta": "new/escalated_major/escalated_minor/unchanged/de_escalated/resolved",
+    "dark_corner_impact": null,
+    "_council_comment": "Set by the Council pass (references/threshold-rulebook.md), which independently re-reads Classify's output against the guidelines/thresholds and against the previous ledger line for this canonical_event_id, before the event is allowed into the digest. workflow_status reflects Council's final call, not Classify's initial one, when they differ. council_verdict is kept distinct from workflow_status so Classify-vs-Council disagreement rate is itself measurable over time. dark_corner_impact is a null-by-default supply-chain-propagation narrative (using service-dependency-graph.json + cargo-hub-tiers.json) - only set when there's a real, non-generic inference to draw; a migrated pre-Council line keeps council_verdict: not_reviewed and dark_corner_impact: null rather than a fabricated retroactive value."
   },
   "search_cycle_summary": {
     "search_cycle_id": "",
