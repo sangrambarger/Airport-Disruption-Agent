@@ -1,0 +1,57 @@
+{
+  "config_schema_version": 2,
+  "_comment": "Edit this file to point the skill at a different scope, cadence, or delivery target. Nothing in the skill or workflow files should need to change for a new deployment - if it does, that's a bug in the skill, not a config gap.",
+
+  "scope": {
+    "mode": "global",
+    "_mode_options": ["global", "regions"],
+    "include_regions": [],
+    "exclude_regions": [],
+    "_note": "When mode is 'regions', include_regions holds country names, region names, or IATA/ICAO codes and discovery is restricted to them. Empty include_regions with mode 'global' means no restriction. exclude_regions applies in either mode."
+  },
+
+  "cadence": {
+    "flash_hours": 2,
+    "deep_hours": 3,
+    "_note": "One skill, one workflow (.claude/workflows/airport-radar-sweep.js), one Routine - not two. The Routine fires hourly (the durable-scheduler floor - see below) and each firing decides its own scope: run deep-scope buckets if >= deep_hours since the last successful deep-scope sweep, else run flash-scope buckets if >= flash_hours since the last successful sweep of either scope (a deep sweep satisfies the flash requirement too, since its bucket list is a superset), else skip the firing entirely (a near-free ops-log read, no Workflow call). flash_hours/deep_hours themselves can be any value >= 1 - hourly is only the check-in granularity needed to hit both thresholds exactly, not a hard cadence floor on the values you pick here. The hard floor is elsewhere: the durable Routine/trigger mechanism (the only scheduler that survives past a session and doesn't expire) has a minimum interval of 1 hour, which is why the check-in itself can't be more frequent than hourly - a sub-hourly primitive (CronCreate) exists but is session-scoped, auto-expires after 7 days, and only fires while a session is idle, not viable for standing production monitoring."
+  },
+
+  "cargo_hub_tiers_ref": "assets/cargo-hub-tiers.json",
+
+  "delivery": {
+    "dashboard": {
+      "enabled": true,
+      "auto_refresh": true,
+      "_note": "auto_refresh means the dashboard is regenerated and republished as the last step of every successful cycle, once that step exists (build-plan Batch 4). There is no in-page 'run now' control - a published Artifact cannot trigger a skill run; see the operating plan, section 9."
+    },
+    "email": {
+      "enabled": false,
+      "provider": "gmail",
+      "to": ["sangrambarger@gmail.com"],
+      "digest_style": "supply_chain_visual_digest",
+      "immediate_alert_condition": "priority_tier == 'Critical' and cargo_impact == 'Direct'",
+      "scheduled_rollup_hours": 12,
+      "_note": "One digest design, two firing conditions - not two different digests: an immediate send when a cycle produces something matching immediate_alert_condition (regardless of whether that cycle was flash- or deep-scope), and a scheduled rollup every scheduled_rollup_hours covering everything not already sent as an immediate alert. Disabled until a Gmail/Outlook connector is authorized on this org and the digest formatter (build-plan Batch 5) exists."
+    }
+  },
+
+  "feature_flags": {
+    "flight_tracking_api": false,
+    "flight_tracking_provider": null,
+    "verification_pass": false,
+    "_note": "flight_tracking_api requires an actual provider account and API key (build-plan Batch 3) before it can be turned on. verification_pass is a distinct, still-unbuilt future role (confirming/refuting uncertain candidates with additional search) - not to be confused with the Council pass, which is always-on and reviews already-classified events against the threshold rulebook rather than doing new discovery."
+  },
+
+  "budgets": {
+    "max_agents_per_cycle": 12,
+    "max_tokens_per_cycle_hint": 900000,
+    "_note": "No hard query ceiling per discovery agent - depth is deliberately unbounded (loop-until-dry), by decision: the output quality that was already working should not be traded away for a token ceiling. Reliability is instead handled by decomposing into more, narrower parallel agents (12 possible roles now instead of 7) so no single agent call is the long pole, plus the checkpointing below so a failure never discards completed work. Per-agent timeouts are similarly a soft bound, not a hard one: the Agent tool exposes no timeout parameter, so discovery agents are instructed to move on after two failed attempts at a source rather than actually killing a stuck call."
+  },
+
+  "reliability": {
+    "ops_log_path": "data/ops-log.jsonl",
+    "pending_classification_path": "data/pending-classification.jsonl",
+    "coverage_gap_threshold_cycles": 2,
+    "_note": "A coverage gap is declared when the most recent success in ops_log_path for a given scope is older than coverage_gap_threshold_cycles times that scope's own cadence (4 hours for flash, 6 hours for deep, at current cadence). pending_classification_path holds raw candidates from a deep-scope cycle whose classify step failed, to be replayed via args.pendingCandidates on the next deep-scope run rather than discarded; a flash-scope failure doesn't bother checkpointing - its own next opportunity is at most flash_hours away. A separate, softer failure mode - council_failed - means Classify succeeded but the Council re-check didn't run this cycle; Classify's own verdicts still ship, just without severity_delta/dark_corner_impact and without the noise-control second read."
+  }
+}
