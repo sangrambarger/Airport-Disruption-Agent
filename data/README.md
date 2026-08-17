@@ -30,3 +30,28 @@ history to backfill here the way there was for the ledger. It fills in from the 
 cycle run after this file was introduced.
 
 This is the file the dashboard's ledger/audit view reads.
+
+## `ops-log.jsonl`
+
+One JSON object per line, one per sweep attempt (flash or deep), appended by the Routine that
+fires each pass - never by the workflow script itself, which has no clock or filesystem access.
+Fields: `cycle_id` (the Workflow run's own id, used as an idempotency key so a retried
+orchestrator step can't double-append the same cycle's results), `pass_type` (`flash`/`deep`),
+`started_at`/`completed_at`, `status` (`success`/`partial_failure`/`failed`),
+`raw_candidate_count`, `classified_count`, `ledger_appended_count`, `error` (null on success).
+
+Two things read this file: the next same-`pass_type` cycle (to get `sinceTimestamp` for
+recency-bounded search - the timestamp of the most recent `status: success` line for that
+pass_type), and coverage-gap detection (`config.json`'s `reliability.coverage_gap_threshold_cycles`
+- if the most recent success for a pass_type is older than that many cadence intervals, say so
+loudly in the cycle summary rather than staying silent about it).
+
+## `pending-classification.jsonl`
+
+Checkpoint file for the deep pass only. If a deep-pass cycle's classify step fails after
+discovery already succeeded, its raw candidates are written here (overwriting whatever was here
+before) instead of being discarded. The next deep-pass invocation reads this file, passes its
+contents as `args.pendingCandidates`, and the workflow folds them back into that cycle's own
+fresh candidates for classification. Cleared (emptied) once a cycle successfully classifies the
+backlog. The flash pass doesn't use this - a lost flash cycle's finds are, at most, an hour
+stale by the time the next one runs.

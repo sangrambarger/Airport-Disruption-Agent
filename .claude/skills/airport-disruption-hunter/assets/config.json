@@ -11,9 +11,9 @@
   },
 
   "cadence": {
-    "flash_pass_minutes": 15,
+    "flash_pass_minutes": 60,
     "deep_pass_hours": 5,
-    "_note": "Targets for the two-cadence architecture (build-plan Batch 1). The single combined workflow that exists today runs on whatever cadence its Routine trigger is set to; these values are the intended settings once the flash/deep split lands."
+    "_note": "flash_pass_minutes is 60, not the originally-planned 15-20 - that's a real platform floor discovered while building Batch 1, not a preference. The durable Routine/trigger mechanism (the only scheduling primitive that survives past this session and doesn't expire) has a hard minimum interval of 1 hour. A sub-hourly primitive exists (CronCreate) but is session-scoped, auto-expires after 7 days, and only fires while the session's REPL is idle - not viable for standing production monitoring. Both passes are implemented as separate Routines: .claude/workflows/airport-disruption-flash-pass.js (fewer buckets, runs every flash_pass_minutes) and .claude/workflows/airport-disruption-deep-pass.js (all buckets, runs every deep_pass_hours)."
   },
 
   "cargo_hub_tiers_ref": "assets/cargo-hub-tiers.json",
@@ -43,6 +43,13 @@
   "budgets": {
     "max_agents_per_cycle": 8,
     "max_tokens_per_cycle_hint": 800000,
-    "_note": "max_tokens_per_cycle_hint is informational context for whoever is sizing cadence/scope, not an enforced runtime cap - the workflow script has no way to abort mid-run on token spend today."
+    "_note": "max_tokens_per_cycle_hint is informational context for whoever is sizing cadence/scope, not an enforced runtime cap - the workflow script has no way to abort mid-run on token spend today. Per-agent timeouts are similarly a soft bound, not a hard one: the Agent tool exposes no timeout parameter, so both workflow scripts instruct discovery agents to move on after two failed attempts at a source rather than actually killing a stuck call."
+  },
+
+  "reliability": {
+    "ops_log_path": "data/ops-log.jsonl",
+    "pending_classification_path": "data/pending-classification.jsonl",
+    "coverage_gap_threshold_cycles": 2,
+    "_note": "A coverage gap is declared when the most recent success in ops_log_path for a given pass_type is older than coverage_gap_threshold_cycles times that pass's own cadence (2 hours for flash, 10 hours for deep, at current cadence). pending_classification_path holds raw candidates from a deep-pass cycle whose classify step failed, to be replayed via args.pendingCandidates on the next deep-pass run rather than discarded; the flash pass does not bother checkpointing - its own next cycle is at most an hour away."
   }
 }

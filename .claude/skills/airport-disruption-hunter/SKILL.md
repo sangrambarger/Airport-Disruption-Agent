@@ -161,20 +161,46 @@ held pending more evidence or escalation; `duplicate` and `noise` are not surfac
 For ad hoc hunts (a user asks about a specific airport or region right now), follow the workflow
 above directly with WebSearch/WebFetch/Agent.
 
-For **standing, recurring monitoring** ("keep watching", "check every hour"), this repo also
-ships a runnable Workflow instead of hand-built agent calls each time:
+For **standing, recurring monitoring** ("keep watching", "check every hour"), this repo ships two
+runnable Workflows instead of one — a fast, narrow pass and a slow, recall-complete pass, run on
+separate schedules rather than forcing one workflow shape to do both jobs:
 
-- `.claude/workflows/airport-disruption-hourly-sweep.js` — a global multilingual sweep. It fans
-  out one agent per source bucket from `references/subagent-roles.md` (airport authority, civil
-  aviation/regulator, labour/union, cargo/logistics, airline operations, local-language news,
-  weather/emergency), each doing real WebSearch/WebFetch discovery and a best-effort
-  `impact_estimate` per candidate, then a single dedupe-and-classify agent that reads the running
-  ledger and the current batch together and returns `classified_events` (each with a reconciled
-  `impact` block), `candidate_dispositions` (one dedup verdict per raw candidate, keyed by
-  `source_url`), and a `cycle_summary`. Invoke it with
-  `Workflow({ name: "airport-disruption-hourly-sweep", args: { regionScope: <config.scope> } })` —
-  omit `args` for unrestricted global scope. The script itself merges `candidate_dispositions`
-  onto the raw candidates and returns them as `raw_candidates`.
+- `.claude/workflows/airport-disruption-flash-pass.js` — airport authority, civil
+  aviation/regulator, airline operations, and weather/emergency only (the buckets official/fast
+  sources update within). Recency-bounded to `args.sinceTimestamp` (the last successful flash
+  pass) rather than a fixed window, with a 2-hour fallback if that's not supplied.
+- `.claude/workflows/airport-disruption-deep-pass.js` — all seven buckets from
+  `references/subagent-roles.md`, including labour/union, cargo/logistics, and local-language
+  news — the recall-complete sweep and the actual edge over media-monitoring tools. Recency-bounded
+  the same way, with a 10-hour fallback, but explicitly told not to treat that as a hard cutoff for
+  slow-burn stories the ledger still shows as unresolved.
+
+Both scripts share the same shape: each fans out one discovery agent per bucket (real
+WebSearch/WebFetch, plus a best-effort `impact_estimate` per candidate), then a single
+dedupe-and-classify agent that reads the running ledger and the current batch together and
+returns `classified_events` (each with a reconciled `impact` block), `candidate_dispositions` (one
+dedup verdict per raw candidate, keyed by `source_url`), and a `cycle_summary`. The classify step
+is wrapped so a failure there can't silently lose discovery work — see checkpointing below. Invoke
+either with `Workflow({ name: "airport-disruption-flash-pass", args: { regionScope, sinceTimestamp,
+pendingCandidates } })` (all `args` fields optional; omit `regionScope` for unrestricted global
+scope).
+
+Discovery prompts in both scripts also: prefer official enumerable feeds (airport-authority
+RSS/status pages, NOTAM portals) over generic search where one exists for the bucket; search
+iteratively, generating follow-up queries from newly-found entities until two consecutive queries
+surface nothing new, rather than stopping at a fixed batch; and move on after two failed attempts
+at an unresponsive source rather than retrying indefinitely — a soft bound, since the Agent tool
+exposes no hard per-agent timeout to enforce one.
+
+**Why not a faster cadence.** The flash pass is capped at once per hour, not the originally
+envisioned 15-20 minutes — that's a real platform floor, not a design choice. The durable
+Routine/trigger mechanism (the only scheduling primitive that survives past this session and
+doesn't expire) has a hard minimum interval of one hour. `CronCreate` can go sub-hourly but is
+session-scoped, auto-expires after 7 days, and only fires while the session is idle — not viable
+for standing production monitoring. The flash/deep split still earns its keep at equal cadence
+ceilings: the fast-moving official buckets get checked up to 4-5x more often than the slow-recall
+ones, at a fraction of the cost per check (4 buckets vs. 7).
+
 - `data/signal-ledger.jsonl` (repo root) — the running ledger, one JSON object per line, shaped
   like `classified_event_output` and keyed by `canonical_event_id` (see
   `references/event-fingerprinting.md` for the ID convention). After each sweep, append the
@@ -191,13 +217,30 @@ ships a runnable Workflow instead of hand-built agent calls each time:
   workflow's returned `raw_candidates` array, one JSON object per line, tagging each with the
   cycle identifier — this is what lets the ledger/audit dashboard view show *why* a given title
   was or wasn't treated as a duplicate.
-- Recurring execution is driven by a scheduled Routine (cron trigger) that fires into a session
-  with a prompt to run the workflow, append qualifying events to both ledger files with real
-  timestamps, commit/push, and summarize — the workflow script itself has no scheduling, clock, or
-  filesystem access of its own, so all of that happens as normal tool-using steps after the
-  workflow returns, not inside the script. Once a dashboard-regeneration step exists (build-plan
-  Batch 4), the same Routine prompt is where it gets added, as a further step after the ledger
-  append — the dashboard is never a separate schedule of its own.
+- `data/ops-log.jsonl` and `data/pending-classification.jsonl` (repo root) — see `data/README.md`
+  for the full field list. In short: `ops-log.jsonl` is one line per cycle attempt (success,
+  partial failure, or failure) and is what both the recency window (`sinceTimestamp` for the next
+  same-`pass_type` cycle) and coverage-gap detection read from — if the most recent `success` for
+  a `pass_type` is older than `config.json`'s `reliability.coverage_gap_threshold_cycles` times
+  that pass's cadence, **say so loudly at the top of the cycle summary**, don't stay quiet about
+  it. `pending-classification.jsonl` is the deep-pass checkpoint: if `classification_failed` comes
+  back true, write that cycle's `raw_candidates` there (overwriting, not appending) instead of
+  discarding them, and pass them back in as `args.pendingCandidates` on the next deep-pass
+  invocation; clear it once a cycle classifies the backlog successfully. The flash pass doesn't
+  checkpoint — its own next cycle is at most an hour away, which is cheaper than the bookkeeping.
+- **Idempotency guard.** Before appending a cycle's results to either ledger file, check
+  `ops-log.jsonl` for an existing line with that same `cycle_id` (the Workflow run's own id)
+  already marked appended — if found, skip re-appending. This is what keeps a retried
+  orchestrator step from double-counting the same cycle's results.
+- Recurring execution is driven by two scheduled Routines (cron triggers, one per pass type,
+  each ≥ 1 hour per the floor above) that each fire into a session with a prompt to run their
+  workflow, append qualifying events to both ledger files with real timestamps, write the
+  ops-log entry, commit/push, and summarize (loudly, if there's a coverage gap) — the workflow
+  scripts themselves have no scheduling, clock, or filesystem access of their own, so all of that
+  happens as normal tool-using steps after the workflow returns, not inside the script. Once a
+  dashboard-regeneration step exists (build-plan Batch 4), the same Routine prompts are where it
+  gets added, as a further step after the ledger append — the dashboard is never a separate
+  schedule of its own.
 
 ## Non-negotiables
 
